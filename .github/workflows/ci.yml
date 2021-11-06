@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: packer_cache
+          key:  sha256:ead9ad5e2479a6085eb2c308b9fa2615e38b694ef5718cd23f732f98bdac709a
+      - name: Run packer build
+        env:
+          VERSION:      1.9.3
+          ISO_CHECKSUM: sha256:ead9ad5e2479a6085eb2c308b9fa2615e38b694ef5718cd23f732f98bdac709a
+        run: |
+          set -eux
+          VBoxManage -v
+          packer -v
+          packer build -only=virtualbox-iso \
+            -var version=$VERSION \
+            -var headless=true \
+            -var iso_url=https://github.com/burmilla/os/releases/download/v$VERSION/burmillaos-v$VERSION.iso \
+            -var iso_checksum=$ISO_CHECKSUM \
+            template.json
+          file=burmillaos-openstack.vmdk
+          mv output-virtualbox-iso/burmillaos-disk001.vmdk $file
+          echo -e "sha256: $(shasum -a 256 $file)\nmd5: $(md5 -q $file)  $file" | tee checksums.txt
+      - uses: actions/create-release@v1
+        id:   create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name:     v1.9.3
+          release_name: v1.9.3
+      - uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: burmillaos-openstack.vmdk
+          asset_name: burmillaos-openstack.vmdk
+          asset_content_type: application/octet-stream
+      - uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: checksums.txt
+          asset_name: checksums.txt
+          asset_content_type: text/plain
